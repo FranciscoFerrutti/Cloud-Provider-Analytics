@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PySpark
+.metastore_db/
+derby.log
+spark-warehouse/
+checkpoints/
+*.parquet
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data
+/datalake/
+/tmp/
+*.csv
+*.jsonl
+
+# Config
+config/config.yaml
+.env
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# config
+config
+config/*
+
+# env
+*.env
+.env
+
+# docker files
+*docker*
+
+# markdown files
+*.md
