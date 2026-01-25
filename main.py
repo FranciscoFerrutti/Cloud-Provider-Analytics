@@ -12,9 +12,12 @@ Usage:
 
 import argparse
 import sys
+import logging
 from src.pipeline import Pipeline
 from src.utils.logger import setup_logging
 from src.utils.spark_utils import create_spark_session
+
+logger = logging.getLogger(__name__)
 
 def main():
     """Main entry point"""
@@ -28,6 +31,11 @@ def main():
         "--full",
         action="store_true",
         help="Run full pipeline (batch + silver + gold + serving)"
+    )
+    parser.add_argument(
+        "--etl-only",
+        action="store_true",
+        help="Run ETL pipeline (batch + silver + gold) without serving"
     )
     parser.add_argument(
         "--streaming",
@@ -56,6 +64,13 @@ def main():
         if args.full:
             # Run full pipeline
             pipeline.run_full_pipeline()
+            
+        elif args.etl_only:
+            # Run ETL only (Batch -> Silver -> Gold)
+            pipeline.run_batch_layer()
+            pipeline.run_silver_layer()
+            pipeline.run_gold_layer()
+            logger.info("ETL Pipeline (Batch->Silver->Gold) Completed")
         
         elif args.streaming:
             # Start streaming
