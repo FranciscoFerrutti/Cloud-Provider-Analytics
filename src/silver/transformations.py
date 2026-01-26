@@ -366,7 +366,10 @@ class SilverTransformations:
         Process dimension table with SCD Type 2
         """
 
-        scd_cols = [c for c in df.columns if c not in keys]
+        # Exclude metadata columns from SCD change detection
+        metadata_cols = ["ingest_ts", "source_file", "date", "year", "month", "day"]
+        scd_cols = [c for c in df.columns if c not in keys and c not in metadata_cols]
+        
         return self.scd_manager.apply_scd_type_2(df, table_name, keys, scd_cols)
     
     def save_to_silver(self, df: DataFrame, table_name: str):

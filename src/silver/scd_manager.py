@@ -140,9 +140,54 @@ class SCDManager:
         return final_df
 
     def _save_dimension(self, df: DataFrame, table_name: str, path: str):
-        """Save optimized dimension table"""
-        logger.info(f"Saving updated dimension {table_name} to {path}")
+        """
+        Save optimized dimension table with temp path to avoid race conditions
+        (Spark lazy evaluation causing file not found during overwrite)
+        """
+        import time
+        tmp_path = f"{path}_tmp_{int(time.time())}"
+        
+        logger.info(f"Writing {table_name} to temp path {tmp_path} to avoid race condition")
+        # 1. Write to temp path
         df.write \
           .mode("overwrite") \
           .option("mergeSchema", "true") \
+          .parquet(tmp_path)
+        
+        logger.info(f"Overwriting target {path} from temp path")
+        
+        # 2. Read from temp and overwrite target
+        # This breaks the lineage from the original source files in 'path'
+        temp_df = self.spark.read.parquet(tmp_path)
+        temp_df.write \
+          .mode("overwrite") \
+          .option("mergeSchema", "true") \
           .parquet(path)
+          
+        logger.info(f"Successfully saved {table_name} to {path}")
+        
+        # 3. Cleanup temp path
+        self._cleanup_temp_path(tmp_path)
+            
+    def _cleanup_temp_path(self, path: str):
+        """Clean up temporary path"""
+        import shutil
+        import os
+        
+        logger.info(f"Cleaning up temp path: {path}")
+        try:
+            # Handle file:// prefix
+            if path.startswith("file://"):
+                local_path = path[7:]
+            elif "://" not in path:
+                # Assume local path if no schema
+                local_path = path
+            else:
+                logger.warning(f"Skipping cleanup for non-local path: {path}")
+                return
+
+            if os.path.exists(local_path):
+                shutil.rmtree(local_path)
+                logger.info(f"Deleted temp path {local_path}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup temp path {path}: {e}")

@@ -37,6 +37,8 @@ class GoldMarts:
         
 
         
+        silver_df = self.spark.read.parquet(Config.get_silver_path("usage_events"))
+        
         mart_df = silver_df.groupBy(
             "org_id",
             "date",
@@ -168,7 +170,7 @@ class GoldMarts:
             spark_sum(when(col("sla_breach") == True, 1).otherwise(0)).alias("sla_breach_count"),
             (spark_sum(when(col("sla_breach") == True, 1).otherwise(0)) / count("ticket_id") * 100).alias("sla_breach_rate"),
             avg("resolution_hours").alias("avg_resolution_hours"),
-            spark_sum(when(col("severity") == "critical", 1).otherwise(0)).alias("critical_tickets_count")
+            spark_sum(when(col("priority") == "critical", 1).otherwise(0)).alias("critical_tickets_count")
         )
         
         return mart_df
