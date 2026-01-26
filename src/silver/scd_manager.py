@@ -47,11 +47,17 @@ class SCDManager:
         # Add hash to source
         source_hashed = self._calculate_hash(source_df, scd_cols, "new_hash")
         
-        # Try to read existing target
-        try:
-            target_df = self.spark.read.parquet(target_path)
-            logger.info(f"Loaded existing dimension from {target_path}")
-        except Exception:
+        
+        # Check if target exists to avoid noisy FileNotFound logs in local/Colab
+        target_df = None
+        if self._path_exists(target_path):
+            try:
+                target_df = self.spark.read.parquet(target_path)
+                logger.info(f"Loaded existing dimension from {target_path}")
+            except Exception:
+                logger.warning(f"Failed to read existing target {target_path}")
+                
+        if target_df is None:
             logger.warning(f"Target {target_path} not found or empty. Initializing new dimension.")
             # If target doesn't exist, all source records are new
             final_df = source_hashed.withColumn("start_date", current_date()) \
@@ -61,6 +67,18 @@ class SCDManager:
             
             self._save_dimension(final_df, table_name, target_path)
             return final_df
+
+    def _path_exists(self, path: str) -> bool:
+        """Check if path exists (supports local file:// scheme)"""
+        import os
+        try:
+            if path.startswith("file://"):
+                return os.path.exists(path[7:])
+            elif "://" not in path:
+                return os.path.exists(path)
+        except Exception:
+            pass
+        return True  # Assume exists for remote/other schemes to let Spark handle it
 
         # --- SCD Logic (Full Snapshot Comparison) ---
         
