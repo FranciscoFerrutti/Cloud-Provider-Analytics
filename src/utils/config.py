@@ -54,13 +54,11 @@ class Config:
     
     # Cassandra/AstraDB configuration
     CASSANDRA_CONFIG = {
-        "keyspace": "cloud_provider_analytics",
-        "host": os.getenv("ASTRA_HOST", ""),
-        "port": int(os.getenv("ASTRA_PORT", "9042")),
-        "username": os.getenv("ASTRA_USERNAME", ""),
-        "password": os.getenv("ASTRA_PASSWORD", ""),
-        "secure_bundle_path": os.getenv("ASTRA_SECURE_BUNDLE_PATH", ""),
-        "token": os.getenv("ASTRA_TOKEN", "")
+        "db_id": os.getenv("ASTRA_DB_ID", ""),
+        "region": os.getenv("ASTRA_DB_REGION", ""),
+        "token": os.getenv("ASTRA_DB_APPLICATION_TOKEN", os.getenv("ASTRA_TOKEN", "")),
+        "keyspace": os.getenv("ASTRA_DB_KEYSPACE", "cloud_analytics"),
+        # Keep legacy locally just in case, but prioritize above
     }
     
     # Partition columns
