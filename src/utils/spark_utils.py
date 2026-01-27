@@ -41,7 +41,7 @@ def create_spark_session(app_name: str = "CloudProviderAnalytics",
         "spark.sql.files.maxPartitionBytes": "134217728",  # 128MB
         "spark.sql.shuffle.partitions": "200",
         "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
-        "spark.jars.packages": "com.datastax.spark:spark-cassandra-connector_2.12:3.4.1"
+        "spark.jars.packages": "com.datastax.spark:spark-cassandra-connector_2.12:3.5.0"
     }
     
     if config:
