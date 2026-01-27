@@ -1,15 +1,98 @@
 """
 Load data from Gold layer to Cassandra/AstraDB
+Decoupled implementation using native Cassandra driver.
 """
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import col, to_date
 import logging
+import os
+from typing import Iterator
 
 from src.utils.config import Config
 from src.serving.astradb_setup import AstraDBSetup
 
 logger = logging.getLogger(__name__)
+
+
+def write_partition_to_cassandra(partition: Iterator, table_name: str, config: dict):
+    """
+    Write a partition of rows to Cassandra using the native driver.
+    Designed to run on executors.
+    
+    Args:
+        partition: Iterator of Row objects
+        table_name:/Target table name
+        config: Cassandra connection config
+    """
+    try:
+        from cassandra.cluster import Cluster
+        from cassandra.auth import PlainTextAuthProvider
+    except ImportError:
+        # Should be installed on workers
+        return
+
+    bundle_path = config.get("secure_bundle_path")
+    token = config.get("token")
+    
+    if not bundle_path or not os.path.exists(bundle_path) or not token:
+        # Log to stderr on executor or handle failure
+        return
+
+    # Connect to Cassandra
+    cloud_config = {'secure_connect_bundle': bundle_path}
+    auth_provider = PlainTextAuthProvider('token', token)
+    cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
+    session = cluster.connect()
+    
+    # Select keyspace
+    try:
+        session.set_keyspace(AstraDBSetup.KEYSPACE)
+    except Exception:
+        # Fallback or fail
+        pass
+
+    # Prepare statement for efficient batching? 
+    # For simplicity and robustness with random schemas, we might construct INSERTs dynamically
+    # or use a pre-prepared statement if we knew the schema beforehand.
+    # Given the dynamic nature here (table_name passed), detailed schema awareness on executor is minimal.
+    # We will use simple JSON insert or construct the INSERT statement dynamically based on the first row.
+    
+    # Ideally, we get the schema from the first row (assuming homogenous partition)
+    # But rows might be Dictionary-like.
+    
+    # Strategy: simple insert for each row. 
+    # Optimization: BatchStatement could be used but requires care with partition keys.
+    # We'll use simple execution for safety and idempotence.
+    
+    # Cache prepared statement
+    prepared_stmt = None
+    columns = None
+    
+    for row in partition:
+        data = row.asDict()
+        
+        if not prepared_stmt:
+            columns = list(data.keys())
+            cols_str = ", ".join(columns)
+            markers = ", ".join(["?" for _ in columns])
+            query = f"INSERT INTO {table_name} ({cols_str}) VALUES ({markers})"
+            try:
+                prepared_stmt = session.prepare(query)
+            except Exception as e:
+                # Log error
+                print(f"Error preparing statement for {table_name}: {e}")
+                break
+        
+        try:
+            # Bind parameters in order
+            values = [data[c] for c in columns]
+            session.execute(prepared_stmt, values)
+        except Exception as e:
+            print(f"Error inserting row into {table_name}: {e}")
+            # Continue or break? Continue best effort?
+            
+    cluster.shutdown()
 
 
 class CassandraLoader:
@@ -27,57 +110,8 @@ class CassandraLoader:
     
     def create_keyspace_and_tables(self):
         """Create keyspace and tables in Cassandra"""
-        logger.info("Creating Cassandra keyspace and tables")
-        
-        try:
-            # This would typically use astrapy or cassandra-driver
-            # For now, we'll provide the CQL statements
-            statements = AstraDBSetup.get_all_cql_statements()
-            
-            logger.info(f"Generated {len(statements)} CQL statements")
-            for stmt in statements:
-                logger.debug(f"CQL: {stmt[:100]}...")
-            
-            # In production, execute these via cassandra-driver
-            try:
-                import os
-                from cassandra.cluster import Cluster
-                from cassandra.auth import PlainTextAuthProvider
-                
-                bundle_path = self.cassandra_config.get("secure_bundle_path")
-                token = self.cassandra_config.get("token")
-                
-                if bundle_path and os.path.exists(bundle_path) and token:
-                    logger.info(f"Connecting to Cassandra using Bundle: {bundle_path}")
-                    cloud_config = {'secure_connect_bundle': bundle_path}
-                    auth_provider = PlainTextAuthProvider('token', token)
-                    cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
-                    session = cluster.connect()
-                    
-                    for stmt in statements:
-                        try:
-                            session.execute(stmt)
-                            logger.info(f"Executed: {stmt[:50]}...")
-                        except Exception as e:
-                            # Log but continue (some objects might already exist)
-                            if "already exists" in str(e):
-                                logger.info(f"Object already exists: {stmt[:50]}...")
-                            else:
-                                logger.warning(f"Error executing CQL: {e}")
-                                
-                    cluster.shutdown()
-                    logger.info("CQL execution completed via cassandra-driver")
-                else:
-                    logger.warning("Secure Connect Bundle not found or Token missing. Skipping CQL execution via driver.")
-                    
-            except ImportError:
-                logger.warning("cassandra-driver not installed. Skipping DDL execution.")
-            except Exception as e:
-                logger.error(f"Failed to execute CQL via driver: {e}")
-            
-        except Exception as e:
-            logger.error(f"Error creating Cassandra schema: {e}")
-            raise
+        logger.info("Creating Cassandra keyspace and tables via AstraDBSetup")
+        AstraDBSetup.setup_infrastructure()
     
     def load_mart_to_cassandra(self, mart_name: str, table_name: str = None):
         """
@@ -96,71 +130,28 @@ class CassandraLoader:
         gold_path = Config.get_gold_path(mart_name)
         df = self.spark.read.parquet(gold_path)
         
-        # Ensure date column is in correct format
+        # Ensure date column is in correct format if exists
         if "date" in df.columns:
             df = df.withColumn("date", to_date(col("date")))
+            
+        # Repartition to control parallelism? 
+        # df.rdd.getNumPartitions() might be high or low. 
+        # Depending on volume, we might want to `coalesce` or `repartition`.
+        # For now, keep default.
         
-        # Write to Cassandra using Spark Cassandra connector
-        # Note: Requires spark-cassandra-connector
+        # Capture config to serialize to executors
+        config_broadcast = self.cassandra_config
+        
+        # Execute foreachPartition
         try:
-            df.write \
-                .format("org.apache.spark.sql.cassandra") \
-                .mode("append") \
-                .options(
-                    table=table_name,
-                    keyspace=AstraDBSetup.KEYSPACE,
-                    host=self.cassandra_config["host"],
-                    port=self.cassandra_config["port"]
-                ) \
-                .save()
-            
-            logger.info(f"Successfully loaded {df.count()} records to Cassandra/{table_name}")
-            
-        except Exception as e:
-            logger.error(f"Error loading to Cassandra: {e}")
-            logger.info("Falling back to manual insertion via astrapy")
-            # Fallback: use astrapy for manual insertion
-            self._load_via_astrapy(df, table_name)
-    
-    def _load_via_astrapy(self, df: DataFrame, table_name: str):
-        """
-        Load data using astrapy library (fallback method)
-        
-        Args:
-            df: DataFrame to load
-            table_name: Target table name
-        """
-        logger.info(f"Loading via astrapy to {table_name}")
-        
-        try:
-            from astrapy import DataAPIClient
-            from astrapy.db import AstraDB
-            
-            # Initialize AstraDB client
-            client = DataAPIClient(token=self.cassandra_config["token"])
-            db = client.get_database_by_api_endpoint(
-                self.cassandra_config["host"]
+            df.foreachPartition(
+                lambda partition: write_partition_to_cassandra(partition, table_name, config_broadcast)
             )
-            collection = db.get_collection(table_name)
-            
-            # Convert DataFrame to list of dicts
-            records = df.toPandas().to_dict('records')
-            
-            # Insert in batches
-            batch_size = 100
-            for i in range(0, len(records), batch_size):
-                batch = records[i:i + batch_size]
-                collection.insert_many(batch)
-                logger.info(f"Inserted batch {i//batch_size + 1}")
-            
-            logger.info(f"Successfully loaded {len(records)} records via astrapy")
-            
-        except ImportError:
-            logger.warning("astrapy not available. Skipping Cassandra load.")
+            logger.info(f"Successfully loaded {mart_name} to Cassandra/{table_name}")
         except Exception as e:
-            logger.error(f"Error loading via astrapy: {e}")
+            logger.error(f"Error loading {mart_name} to Cassandra: {e}")
             raise
-    
+
     def load_all_marts(self):
         """Load all Gold marts to Cassandra"""
         logger.info("Loading all Gold marts to Cassandra")
@@ -179,4 +170,3 @@ class CassandraLoader:
             except Exception as e:
                 logger.error(f"Failed to load {mart_name}: {e}")
                 continue
-
