@@ -116,3 +116,13 @@ class CassandraSchema:
         """
         
         return tables
+
+    @staticmethod
+    def get_all_cql_statements() -> list[str]:
+        """
+        Get all CQL statements as a list
+        
+        Returns:
+            List of CQL strings
+        """
+        return list(CassandraSchema.get_table_definitions().values())
