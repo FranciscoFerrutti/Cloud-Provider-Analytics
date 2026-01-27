@@ -13,7 +13,7 @@ from src.streaming.streaming_ingestion import StreamingIngestion
 from src.silver.transformations import SilverTransformations
 from src.silver.anomaly_detection import AnomalyDetector
 from src.gold.marts import GoldMarts
-from src.cassandra.loader import CassandraLoader
+from src.serving.loader import CassandraLoader
 
 logger = logging.getLogger(__name__)
 

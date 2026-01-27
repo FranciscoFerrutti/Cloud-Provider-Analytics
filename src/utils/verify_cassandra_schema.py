@@ -4,11 +4,11 @@ import os
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from src.cassandra.schema import CassandraSchema
+from src.serving.astradb_setup import AstraDBSetup
 
 try:
-    print("Testing CassandraSchema.get_all_cql_statements()...")
-    stmts = CassandraSchema.get_all_cql_statements()
+    print("Testing AstraDBSetup.get_all_cql_statements()...")
+    stmts = AstraDBSetup.get_all_cql_statements()
     print(f"Successfully retrieved {len(stmts)} statements.")
     
     for i, stmt in enumerate(stmts):
