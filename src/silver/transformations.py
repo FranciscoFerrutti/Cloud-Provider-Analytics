@@ -366,9 +366,14 @@ class SilverTransformations:
         Process dimension table with SCD Type 2
         """
 
-        # Exclude metadata columns from SCD change detection
+        # Exclude metadata columns from SCD change detection and drop them to avoid VoidType errors
         metadata_cols = ["ingest_ts", "source_file", "date", "year", "month", "day"]
         scd_cols = [c for c in df.columns if c not in keys and c not in metadata_cols]
+        
+        # Drop metadata columns as they shouldn't be part of the dimension table
+        for col_name in metadata_cols:
+            if col_name in df.columns:
+                df = df.drop(col_name)
         
         return self.scd_manager.apply_scd_type_2(df, table_name, keys, scd_cols)
     
