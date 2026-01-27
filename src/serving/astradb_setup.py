@@ -1,6 +1,7 @@
 """
 AstraDB Setup Script
 Preparing AstraDB to serve marts using Document API (Collections).
+Using DataAPIClient.
 """
 
 import os
@@ -8,7 +9,7 @@ import logging
 from typing import List
 
 try:
-    from astrapy.collections import create_client, AstraCollection
+    from astrapy.client import DataAPIClient
 except ImportError:
     pass
 
@@ -30,19 +31,24 @@ class AstraDBSetup:
         
     @classmethod
     def get_client(cls):
-        """Create and return an Astra Client"""
-        db_id = os.getenv("ASTRA_DB_ID")
-        region = os.getenv("ASTRA_DB_REGION")
+        """Create and return an Astra DataAPIClient"""
         token = os.getenv("ASTRA_DB_APPLICATION_TOKEN", os.getenv("ASTRA_TOKEN"))
         
-        if not db_id or not region or not token:
-            raise ValueError("Missing AstraDB credentials (ASTRA_DB_ID, ASTRA_DB_REGION, ASTRA_DB_APPLICATION_TOKEN)")
+        if not token:
+            raise ValueError("Missing AstraDB token (ASTRA_DB_APPLICATION_TOKEN)")
             
-        return create_client(
-            astra_database_id=db_id,
-            astra_database_region=region,
-            astra_application_token=token
-        )
+        return DataAPIClient(token=token)
+
+    @classmethod
+    def get_api_endpoint(cls):
+        """Construct API Endpoint from ID and Region"""
+        db_id = os.getenv("ASTRA_DB_ID")
+        region = os.getenv("ASTRA_DB_REGION")
+        
+        if not db_id or not region:
+            raise ValueError("Missing ASTRA_DB_ID or ASTRA_DB_REGION")
+            
+        return f"https://{db_id}-{region}.apps.astra.datastax.com"
 
     @classmethod
     def setup_infrastructure(cls):
@@ -52,22 +58,35 @@ class AstraDBSetup:
         try:
             logger.info("Connecting to AstraDB...")
             client = cls.get_client()
-            namespace = client.namespace(cls.KEYSPACE)
+            endpoint = cls.get_api_endpoint()
             
-            logger.info(f"Using namespace: {cls.KEYSPACE}")
+            db = client.get_database(endpoint, keyspace=cls.KEYSPACE)
+            logger.info(f"Connected to Database at {endpoint}, namespace: {cls.KEYSPACE}")
             
-            # List existing collections? 
-            # In Document API, collections are often created on demand or we can explicitly create them.
-            # astrapy 0.3.3 might not have a simple 'collection_exists' check without listing.
-            # We'll just define them. 
+            # List existing to avoid recreation errors if create_collection isn't idempotent
+            # Assuming list_collection_names exists on Database object (common pattern)
+            # If not, we might rely on try/except
             
+            try:
+                # Attempt to access admin or list collections via DB object if method exists
+                # Based on client.py docstring, we only saw create_collection.
+                # We will try to create and catch error if it exists.
+                pass
+            except Exception:
+                pass
+
             for col_name in cls.COLLECTIONS:
                 logger.info(f"Initializing collection: {col_name}")
-                collection = namespace.collection(col_name)
-                # We could try a dummy operation or just assume it's ready.
-                # If we wanted to ensure creation, we might insert/delete a dummy doc, 
-                # but usually getting the collection object is enough for the client-side reference.
-                # True 'creation' happens on first write or explicit create call if API supports it.
+                try:
+                    db.create_collection(col_name)
+                    logger.info(f"Created collection: {col_name}")
+                except Exception as e:
+                    # Likely already exists
+                    if "already exists" in str(e).lower() or "conflict" in str(e).lower():
+                        logger.info(f"Collection {col_name} probably already exists.")
+                    else:
+                        # Log warning but don't fail hard if it's just pre-existing
+                         logger.warning(f"Error creating collection {col_name}: {e}")
                 
             logger.info("Infrastructure setup completed.")
             

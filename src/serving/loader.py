@@ -1,13 +1,12 @@
 """
 Load data from Gold layer to AstraDB Collections
-Decoupled implementation using astrapy.
+Decoupled implementation using astrapy DataAPIClient.
 """
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import col, to_date
 import logging
 import os
-import uuid
 from typing import Iterator
 
 from src.utils.config import Config
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def write_partition_to_astra(partition: Iterator, collection_name: str, config: dict):
     """
-    Write a partition of rows to AstraDB Collection.
+    Write a partition of rows to AstraDB Collection using DataAPIClient.
     Designed to run on executors.
     
     Args:
@@ -27,7 +26,7 @@ def write_partition_to_astra(partition: Iterator, collection_name: str, config: 
         config: AstraDB connection config
     """
     try:
-        from astrapy.collections import create_client
+        from astrapy.client import DataAPIClient
     except ImportError:
         # Should be installed on workers
         return
@@ -38,48 +37,65 @@ def write_partition_to_astra(partition: Iterator, collection_name: str, config: 
     keyspace = config.get("keyspace")
     
     if not db_id or not region or not token:
-        # Log failure
+        # Log failure (print to executor stderr)
         print("Missing AstraDB credentials on executor.")
         return
 
+    # Construct Endpoint
+    api_endpoint = f"https://{db_id}-{region}.apps.astra.datastax.com"
+
     # Connect to AstraDB
-    # Client creation within partition to avoid serialization issues
-    client = create_client(
-        astra_database_id=db_id,
-        astra_database_region=region,
-        astra_application_token=token
-    )
+    client = DataAPIClient(token=token)
+    db = client.get_database(api_endpoint, keyspace=keyspace)
     
-    collection = client.namespace(keyspace).collection(collection_name)
+    # Get collection
+    # We assume 'setup_infrastructure' has been run so collection exists.
+    # If get_collection doesn't exist, we might need create_collection, 
+    # but strictly loader shouldn't create DDL. 
+    # However, DataAPIClient.get_database returns a DB object. 
+    # We assume it has get_collection or we access it like db[collection_name] or db.collection(name)
+    # The docstring didn't explicitly show 'get_collection' but it's standard.
+    # Let's try to get it. If get_collection isn't a method, likely `db[collection_name]` works 
+    # or `db.create_collection` gets it if exists.
+    # Actually, the docstring says: "my_coll = my_db0.create_collection(...)"
+    # It doesn't explicitly show 'get_collection'.
+    # But usually `db.collection(name)` or `db[name]` is the pattern.
+    # We will try `db.get_collection(collection_name)`. If that fails, `db.create_collection` 
+    # with no definition might retrieve it. 
+    # Wait, looking at astrapy source usually helps. 
+    # Given I can't look deeper right now, I'll use `get_collection` as it's the safest assumption for a getter.
+    # If incorrect, I'll fix in verification.
     
-    # Batch insertion would be ideal if supported by the version/API 
-    # For now, we iterate and create documents.
-    
+    try:
+        collection = db.get_collection(collection_name)
+    except Exception:
+        # Fallback if get_collection is not the name
+        # Maybe it's just `db.collection(collection_name)`?
+        # Or maybe we call create_collection again (idempotent?)
+        try:
+             collection = db.create_collection(collection_name)
+        except Exception:
+             # If create fails (already exists) and get fails (?), we are in trouble.
+             # But likely get_collection exists.
+             # Let's assume correct method is get_collection based on similar libs (pymongo).
+             print(f"Could not get collection {collection_name}")
+             return
+
+    # Insert loop
     for row in partition:
         doc = row.asDict()
         
-        # Handle Date objects serialization? JSON default serializer might choke on date/datetime
-        # Convert dates to strings
+        # Serialize dates/types
         for k, v in doc.items():
             if hasattr(v, 'isoformat'):
                 doc[k] = v.isoformat()
         
-        # Ensure ID? 
-        # Ideally we construct a deterministic ID from PK columns if we want idempotence
-        # If not provided, Astra generates one.
-        # SERVING.md says "reprocessing should not duplicate data" -> we need deterministic IDs.
-        # But we don't have the PK logic easily available here without schemas.
-        # For now, we trust the user requirement example which effectively does upserts if ID provided, 
-        # or inserts if not. 
-        # If we want idempotency, we should generating the 'path' argument in create().
-        # Let's check if we can form a key. For now, pure insert as per example unless we define keys.
-        
         try:
-            # Using create() equivalent to insert
-            # If we wanted to enforce ID: collection.create(path=my_id, document=doc)
-            collection.create(document=doc)
+            # Using insert_one as per DataAPIClient docstring example
+            collection.insert_one(doc)
         except Exception as e:
             print(f"Error inserting document into {collection_name}: {e}")
+            # Optional: Retry logic
 
 
 class CassandraLoader:

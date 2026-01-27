@@ -9,15 +9,20 @@ from src.serving.astradb_setup import AstraDBSetup
 try:
     print("Testing AstraDBSetup config...")
     
-    # Just check if we can get client variables (without making network call if possible, or failing fast)
+    # Test client creation
     try:
-        AstraDBSetup.get_client()
-        print("AstraDB Client configuration seems present.")
+        client = AstraDBSetup.get_client()
+        print(f"DataAPIClient created: {client}")
     except Exception as e:
-        print(f"AstraDB Client configuration missing or invalid: {e}")
-        # This is expected if env vars are not set in this environment
-        # But for verification of code structure, it suffices.
-    
+        print(f"Failed to create DataAPIClient (expected if no token): {e}")
+
+    # Test Endpoint construction
+    try:
+        endpoint = AstraDBSetup.get_api_endpoint()
+        print(f"API Endpoint constructed: {endpoint}")
+    except Exception as e:
+        print(f"Failed to construct endpoint (expected if keys missing): {e}")
+        
     print("Collections defined:")
     for col in AstraDBSetup.COLLECTIONS:
         print(f"- {col}")
