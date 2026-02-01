@@ -2,13 +2,13 @@
 marp: true
 theme: gaia
 paginate: true
-backgroundColor: #fff
+backgroundColor: #fffaf0
 style: |
-  section { font-family: 'Arial', sans-serif; }
-  h1 { color: #005f9e; }
-  h2 { color: #004080; }
-  strong { color: #d63384; }
-  img { box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); border-radius: 5px; }
+  section { font-family: 'Arial', sans-serif; font-size: 30px; }
+  h1 { color: #3a89c9; }
+  h2 { color: #1b325f; }
+  strong { color: #f26c4f; }
+  img { box-shadow: 0 4px 8px 0 rgba(233, 242, 249, 1); border-radius: 5px; }
   .lead { text-align: center; }
 ---
 
@@ -18,7 +18,9 @@ style: |
 ## ETL + Streaming + Serving en Cassandra
 
 **Contexto:** Big Data & Data Engineering
-**Fecha:** 30/01/2026
+**Fecha:** 09/02/2026
+
+**Presentador** Francisco Marcos Ferrutti
 
 ---
 
