@@ -48,36 +48,12 @@ def write_partition_to_astra(partition: Iterator, collection_name: str, config: 
     client = DataAPIClient(token=token)
     db = client.get_database(api_endpoint, keyspace=keyspace)
     
-    # Get collection
-    # We assume 'setup_infrastructure' has been run so collection exists.
-    # If get_collection doesn't exist, we might need create_collection, 
-    # but strictly loader shouldn't create DDL. 
-    # However, DataAPIClient.get_database returns a DB object. 
-    # We assume it has get_collection or we access it like db[collection_name] or db.collection(name)
-    # The docstring didn't explicitly show 'get_collection' but it's standard.
-    # Let's try to get it. If get_collection isn't a method, likely `db[collection_name]` works 
-    # or `db.create_collection` gets it if exists.
-    # Actually, the docstring says: "my_coll = my_db0.create_collection(...)"
-    # It doesn't explicitly show 'get_collection'.
-    # But usually `db.collection(name)` or `db[name]` is the pattern.
-    # We will try `db.get_collection(collection_name)`. If that fails, `db.create_collection` 
-    # with no definition might retrieve it. 
-    # Wait, looking at astrapy source usually helps. 
-    # Given I can't look deeper right now, I'll use `get_collection` as it's the safest assumption for a getter.
-    # If incorrect, I'll fix in verification.
-    
     try:
         collection = db.get_collection(collection_name)
     except Exception:
-        # Fallback if get_collection is not the name
-        # Maybe it's just `db.collection(collection_name)`?
-        # Or maybe we call create_collection again (idempotent?)
         try:
              collection = db.create_collection(collection_name)
         except Exception:
-             # If create fails (already exists) and get fails (?), we are in trouble.
-             # But likely get_collection exists.
-             # Let's assume correct method is get_collection based on similar libs (pymongo).
              print(f"Could not get collection {collection_name}")
              return
 

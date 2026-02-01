@@ -15,9 +15,10 @@ style: |
 <!-- _class: lead -->
 
 # Cloud Provider Analytics
-## ETL + Streaming + Serving en Cassandra
+## ETL + Streaming + Serving en AstraDB
 
-**Contexto:** Big Data & Data Engineering
+**72.80 - Big Data**
+
 **Fecha:** 09/02/2026
 
 **Presentador** Francisco Marcos Ferrutti

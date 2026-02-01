@@ -63,30 +63,16 @@ class AstraDBSetup:
             db = client.get_database(endpoint, keyspace=cls.KEYSPACE)
             logger.info(f"Connected to Database at {endpoint}, namespace: {cls.KEYSPACE}")
             
-            # List existing to avoid recreation errors if create_collection isn't idempotent
-            # Assuming list_collection_names exists on Database object (common pattern)
-            # If not, we might rely on try/except
-            
-            try:
-                # Attempt to access admin or list collections via DB object if method exists
-                # Based on client.py docstring, we only saw create_collection.
-                # We will try to create and catch error if it exists.
-                pass
-            except Exception:
-                pass
-
             for col_name in cls.COLLECTIONS:
                 logger.info(f"Initializing collection: {col_name}")
                 try:
                     db.create_collection(col_name)
                     logger.info(f"Created collection: {col_name}")
                 except Exception as e:
-                    # Likely already exists
                     if "already exists" in str(e).lower() or "conflict" in str(e).lower():
                         logger.info(f"Collection {col_name} probably already exists.")
                     else:
-                        # Log warning but don't fail hard if it's just pre-existing
-                         logger.warning(f"Error creating collection {col_name}: {e}")
+                        logger.warning(f"Error creating collection {col_name}: {e}")
                 
             logger.info("Infrastructure setup completed.")
             
