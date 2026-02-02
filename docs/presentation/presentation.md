@@ -90,19 +90,7 @@ Organización en zonas para garantizar trazabilidad y gobernanza:
 
 ---
 
-## 6. Formatos y Almacenamiento
-
-* **Formato Intermedio:** **Parquet**.
-  * Compresión Snappy/Zstd.
-  * Esquema columnar para consultas analíticas rápidas.
-  
-* **Particionamiento:**
-  * Por fecha (`event_date`) para optimizar lecturas temporales.
-  * Estructura jerárquica en el sistema de archivos (Data Lake local/distribuido).
-
----
-
-## 7. Patrón Arquitectónico: Lambda
+## 6. Patrón Arquitectónico: Lambda
 
 ¿Por qué **Lambda Architecture**?
 
@@ -114,7 +102,7 @@ Organización en zonas para garantizar trazabilidad y gobernanza:
 
 ---
 
-## 8. Ingesta Batch
+## 7. Ingesta Batch
 
 Proceso automatizado para fuentes estáticas y periódicas:
 
@@ -127,7 +115,7 @@ Proceso automatizado para fuentes estáticas y periódicas:
 
 ---
 
-## 9. Ingesta Streaming
+## 8. Ingesta Streaming
 
 Procesamiento continuo de eventos de uso con **Spark Structured Streaming**:
 
@@ -138,7 +126,7 @@ Procesamiento continuo de eventos de uso con **Spark Structured Streaming**:
 
 ---
 
-## 10. Calidad de Datos
+## 9. Calidad de Datos
 
 Mecanismos de control implementados:
 
@@ -151,7 +139,7 @@ Mecanismos de control implementados:
 
 ---
 
-## 11. Transformaciones en Silver
+## 10. Transformaciones en Silver
 
 El corazón del procesamiento ETL:
 
@@ -164,7 +152,7 @@ El corazón del procesamiento ETL:
 
 ---
 
-## 12. Gold Layer — Marts de Negocio
+## 11. Gold Layer — Marts de Negocio
 
 Tablas diseñadas específicamente para responder preguntas de negocio:
 
@@ -178,7 +166,7 @@ Tablas diseñadas específicamente para responder preguntas de negocio:
 
 ---
 
-## 13. Serving Layer — AstraDB (Cassandra)
+## 12. Serving Layer — AstraDB (Cassandra)
 
 Base de datos NoSQL para el consumo de baja latencia.
 
@@ -190,7 +178,7 @@ Base de datos NoSQL para el consumo de baja latencia.
 
 ---
 
-## 14. Carga de Datos a Cassandra
+## 13. Carga de Datos a Cassandra
 
 Implementación técnica de la publicación de datos:
 
@@ -202,7 +190,7 @@ Implementación técnica de la publicación de datos:
 
 ---
 
-## 15. Performance y Escalabilidad
+## 14. Performance y Escalabilidad
 
 * **Optimizaciones Spark:**
   * Partition pruning en lecturas Parquet.
@@ -213,7 +201,7 @@ Implementación técnica de la publicación de datos:
 
 ---
 
-## 16. Consultas de Demostración
+## 15. Consultas de Demostración
 
 Ejemplos de insights obtenidos desde AstraDB:
 
@@ -224,7 +212,7 @@ Ejemplos de insights obtenidos desde AstraDB:
 
 ---
 
-## 17. Demo del Pipeline
+## 16. Demo del Pipeline
 
 ![w:900 center](../../img/DIAGRAMA_FLUJO.png)
 
@@ -234,7 +222,7 @@ Ejemplos de insights obtenidos desde AstraDB:
 
 ---
 
-## 18. Decisiones y Trade-offs
+## 17. Decisiones y Trade-offs
 
 * **Lambda vs Kappa:** Se eligió Lambda para garantizar la rectificación histórica completa a pesar de la mayor complejidad de mantenimiento.
 * **AstraPy vs Spark Connector:** Se optó por el **Data API Client** (`astrapy`) por su flexibilidad con documentos JSON y facilidad de uso en entornos serverless/cloud, frente a la rigidez del conector nativo JDBC/Spark.
@@ -242,7 +230,7 @@ Ejemplos de insights obtenidos desde AstraDB:
 
 ---
 
-## 19. Conclusiones
+## 18. Conclusiones
 
 * **Objetivo Cumplido:** Pipeline operativo end-to-end desde raw data hasta dashboarding potencial.
 * **Valor de Negocio:** Visibilidad inmediata de costos y métricas operativas.
@@ -257,5 +245,3 @@ Ejemplos de insights obtenidos desde AstraDB:
 # ¿Preguntas?
 
 Gracias por su atención.
-
-**Repositorio:** [Cloud-Provider-Analytics]
