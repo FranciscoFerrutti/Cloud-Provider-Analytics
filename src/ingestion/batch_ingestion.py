@@ -129,15 +129,11 @@ class BatchIngestion:
         # Read JSON (infer schema first to allow column manipulation)
         df = self.spark.read.json(source_path)
         
-        # Normalize column names (handle schema evolution differences)
         if "timestamp" in df.columns and "event_ts" not in df.columns:
              df = df.withColumnRenamed("timestamp", "event_ts")
              logger.info("Renamed 'timestamp' column to 'event_ts'")
         
-        # Apply schema if provided (cast/select columns)
         if schema:
-            # Select only columns present in schema (and fill missing with null if needed)
-            # and cast to correct types
             schema_cols = []
             for field in schema.fields:
                 if field.name in df.columns:

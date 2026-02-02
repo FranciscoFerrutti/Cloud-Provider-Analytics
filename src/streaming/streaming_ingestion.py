@@ -96,7 +96,7 @@ class StreamingIngestion:
         )
         
         # Group by window and event_id, take first occurrence
-        deduplicated_df = df.groupBy(
+        deduplicated_df = df.withWatermark("event_ts", self.streaming_config["watermark_delay"]).groupBy(
             window_spec,
             col("event_id")
         ).agg(
@@ -180,6 +180,24 @@ class StreamingIngestion:
         # Write valid data to Bronze
         bronze_path = Config.get_bronze_path("usage_events")
         checkpoint_path = f"{Config.STREAMING_CHECKPOINT}/bronze_usage_events"
+        
+        # Write invalid data to Quarantine
+        quarantine_path = Config.get_quarantine_path("bronze", "usage_events")
+        quarantine_checkpoint = f"{Config.STREAMING_CHECKPOINT}/quarantine_usage_events"
+        
+        logger.info(f"Starting quarantine stream to {quarantine_path}")
+        
+        # We need to write invalid_df to quarantine
+        invalid_query = invalid_df.writeStream \
+            .outputMode("append") \
+            .format("parquet") \
+            .option("path", quarantine_path) \
+            .option("checkpointLocation", quarantine_checkpoint) \
+            .partitionBy("year", "month", "day") \
+            .trigger(processingTime=self.streaming_config["trigger_interval"]) \
+            .start()
+            
+        logger.info(f"Quarantine streaming query started. Checkpoint: {quarantine_checkpoint}")
         
         query = valid_df.writeStream \
             .outputMode("append") \
