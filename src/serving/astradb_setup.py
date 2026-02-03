@@ -26,7 +26,8 @@ class AstraDBSetup:
         "revenue_by_org_month",
         "cost_anomaly_mart",
         "tickets_by_org_date",
-        "genai_tokens_by_org_date"
+        "genai_tokens_by_org_date",
+        "org_usage_realtime"
     ]
         
     @classmethod

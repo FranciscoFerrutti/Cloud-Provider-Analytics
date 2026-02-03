@@ -58,6 +58,10 @@ def write_partition_to_astra(partition: Iterator, collection_name: str, config: 
              return
 
     # Insert loop
+    # Batch Insert loop
+    batch_size = 20
+    batch = []
+    
     for row in partition:
         doc = row.asDict()
         
@@ -66,12 +70,23 @@ def write_partition_to_astra(partition: Iterator, collection_name: str, config: 
             if hasattr(v, 'isoformat'):
                 doc[k] = v.isoformat()
         
+        batch.append(doc)
+        
+        if len(batch) >= batch_size:
+            try:
+                collection.insert_many(batch)
+                batch = []
+            except Exception as e:
+                print(f"Error inserting batch into {collection_name}: {e}")
+                # Optional: Retry logic or partial insert handling
+                batch = []
+
+    # Insert remaining
+    if batch:
         try:
-            # Using insert_one as per DataAPIClient docstring example
-            collection.insert_one(doc)
+            collection.insert_many(batch)
         except Exception as e:
-            print(f"Error inserting document into {collection_name}: {e}")
-            # Optional: Retry logic
+            print(f"Error inserting remaining batch into {collection_name}: {e}")
 
 
 class CassandraLoader:
