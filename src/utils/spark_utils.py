@@ -106,13 +106,12 @@ def get_common_schemas():
         "support_ticket": StructType([
             StructField("ticket_id", StringType(), False),
             StructField("org_id", StringType(), True),
-            StructField("user_id", StringType(), True),
-            StructField("created_at", DateType(), True),
-            StructField("resolved_at", DateType(), True),
-            StructField("priority", StringType(), True),
-            StructField("status", StringType(), True),
-            StructField("csat_score", IntegerType(), True),
-            StructField("sla_breach", BooleanType(), True)
+            StructField("category", StringType(), True),
+            StructField("severity", StringType(), True),
+            StructField("created_at", StringType(), True),
+            StructField("resolved_at", StringType(), True),
+            StructField("csat", DoubleType(), True),
+            StructField("sla_breached", BooleanType(), True)
         ]),
         
         "billing_monthly": StructType([

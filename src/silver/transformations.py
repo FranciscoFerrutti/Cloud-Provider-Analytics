@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import (
     col, when, isnull, coalesce, lit, sum as spark_sum, count, 
     avg, max as spark_max, min as spark_min, date_format, 
-    to_date, year, month, dayofmonth, hour, upper, trim, regexp_replace,
+    to_date, year, month, dayofmonth, hour, upper, lower, trim, regexp_replace,
     current_timestamp
 )
 from pyspark.sql.window import Window
@@ -375,21 +375,57 @@ class SilverTransformations:
                 df = df.drop(col_name)
         
         return self.scd_manager.apply_scd_type_2(df, table_name, keys, scd_cols)
+
+    def transform_support_tickets(self, df: DataFrame) -> DataFrame:
+        """
+        Transform support tickets data
+        
+        Args:
+            df: Input DataFrame
+            
+        Returns:
+            Transformed DataFrame
+        """
+        logger.info("Transforming support tickets")
+        
+        # 1. Normalize dates
+        df = self.normalize_dates(df, "created_at")
+        
+        # 2. Handle nulls (standard)
+        # For tickets, critical fields are id, org.
+        df = df.dropna(subset=["ticket_id", "org_id"])
+        
+        # 3. Rename columns to match target model
+        if "csat" in df.columns:
+            df = df.withColumnRenamed("csat", "csat_score")
+        if "sla_breached" in df.columns:
+            df = df.withColumnRenamed("sla_breached", "sla_breach")
+        
+        # 4. Clean string fields
+        for col_name in ["category", "severity"]:
+            if col_name in df.columns:
+                 df = df.withColumn(col_name, lower(trim(col(col_name))))
+        
+        return df
     
-    def save_to_silver(self, df: DataFrame, table_name: str):
+    def save_to_silver(self, df: DataFrame, table_name: str, partition_cols: list = None):
         """
         Save transformed data to Silver layer
         
         Args:
             df: Transformed DataFrame
             table_name: Target table name
+            partition_cols: List of columns to partition by (default: year, month, day, service)
         """
         silver_path = Config.get_silver_path(table_name)
         logger.info(f"Saving to Silver: {silver_path}")
         
+        if partition_cols is None:
+            partition_cols = ["year", "month", "day", "service"]
+        
         df.write \
             .mode("overwrite") \
-            .partitionBy("year", "month", "day", "service") \
+            .partitionBy(*partition_cols) \
             .option("mergeSchema", "true") \
             .parquet(silver_path)
         

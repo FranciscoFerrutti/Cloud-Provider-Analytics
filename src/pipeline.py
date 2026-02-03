@@ -92,6 +92,12 @@ class Pipeline:
         # Save to Silver
         self.silver_transforms.save_to_silver(silver_df, "usage_events")
         
+        # --- Process Support Tickets ---
+        logger.info("Processing Support Tickets (Silver)")
+        bronze_tickets = self.spark.read.parquet(Config.get_bronze_path("support_tickets"))
+        silver_tickets = self.silver_transforms.transform_support_tickets(bronze_tickets)
+        self.silver_transforms.save_to_silver(silver_tickets, "support_tickets", ["year", "month", "day"])
+        
         logger.info("Silver Layer Processing Completed")
         
         # --- Process Dimensions with SCD Type 2 ---

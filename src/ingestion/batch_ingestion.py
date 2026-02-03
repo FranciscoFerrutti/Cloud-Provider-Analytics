@@ -28,7 +28,7 @@ class BatchIngestion:
         self.schemas = get_common_schemas()
     
     def ingest_csv_to_bronze(self, source_name: str, source_path: str, 
-                            table_name: str, schema: dict = None) -> DataFrame:
+                            table_name: str, schema: dict = None, read_options: dict = None) -> DataFrame:
         """
         Ingest CSV file to Bronze layer with type standardization and audit fields
         
@@ -49,11 +49,13 @@ class BatchIngestion:
                 .schema(schema) \
                 .option("header", "true") \
                 .option("inferSchema", "false") \
+                .options(**(read_options or {})) \
                 .csv(source_path)
         else:
             df = self.spark.read \
                 .option("header", "true") \
                 .option("inferSchema", "true") \
+                .options(**(read_options or {})) \
                 .csv(source_path)
         
         # Add audit fields
@@ -224,7 +226,8 @@ class BatchIngestion:
             "support_tickets",
             Config.LANDING_SOURCES["support_tickets"],
             "support_tickets",
-            schemas.get("support_ticket")
+            schemas.get("support_ticket"),
+            read_options={"dateFormat": "yyyy-MM-dd"}
         )
         
         self.ingest_csv_to_bronze(

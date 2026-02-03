@@ -134,21 +134,10 @@ class GoldMarts:
         """
         logger.info("Creating tickets_by_org_date mart")
         
-        tickets_df = self.spark.read.parquet(Config.get_bronze_path("support_tickets"))
+        tickets_df = self.spark.read.parquet(Config.get_silver_path("support_tickets"))
         
-        tickets_df = tickets_df.withColumn(
-            "date",
-            to_date(col("created_at"))
-        ).withColumn(
-            "year",
-            year(col("date"))
-        ).withColumn(
-            "month",
-            month(col("date"))
-        ).withColumn(
-            "day",
-            dayofmonth(col("date"))
-        )
+        # Date columns (date, year, month, day) are already present from Silver transformation
+
         
         tickets_df = tickets_df.withColumn(
             "resolution_hours",
@@ -170,7 +159,7 @@ class GoldMarts:
             spark_sum(when(col("sla_breach") == True, 1).otherwise(0)).alias("sla_breach_count"),
             (spark_sum(when(col("sla_breach") == True, 1).otherwise(0)) / count("ticket_id") * 100).alias("sla_breach_rate"),
             avg("resolution_hours").alias("avg_resolution_hours"),
-            spark_sum(when(col("priority") == "critical", 1).otherwise(0)).alias("critical_tickets_count")
+            spark_sum(when(col("severity") == "critical", 1).otherwise(0)).alias("critical_tickets_count")
         )
         
         return mart_df
