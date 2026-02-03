@@ -350,8 +350,7 @@ class SilverTransformations:
         
 
         
-        joined_df = joined_df.withColumnRenamed("cost_usd_increment", "cost_usd_original") \
-                             .withColumn("cost_usd_increment", col("cost_usd_original") * col("exchange_rate_to_usd"))
+        # Double conversion removed: cost_usd_increment is already in USD.
                              
         return joined_df
 
