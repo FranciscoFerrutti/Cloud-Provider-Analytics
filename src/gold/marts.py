@@ -127,7 +127,7 @@ class GoldMarts:
     
     def create_tickets_by_org_date(self) -> DataFrame:
         """
-        Create Support mart: Tickets by organization and date
+        Create Support mart: Tickets by organization, date and severity
         
         Returns:
             DataFrame with ticket metrics
@@ -136,8 +136,8 @@ class GoldMarts:
         
         tickets_df = self.spark.read.parquet(Config.get_silver_path("support_tickets"))
         
-        # Date columns (date, year, month, day) are already present from Silver transformation
-
+        # Date columns (date, year, month, day) are already present from Silver transformation (derived from created_at)
+        tickets_df = tickets_df.withColumnRenamed("date", "ticket_date")
         
         tickets_df = tickets_df.withColumn(
             "resolution_hours",
@@ -149,17 +149,21 @@ class GoldMarts:
         
         mart_df = tickets_df.groupBy(
             "org_id",
-            "date",
+            "ticket_date",
             "year",
             "month",
-            "day"
+            "day",
+            "severity"
         ).agg(
-            count("ticket_id").alias("ticket_count"),
-            avg("csat_score").alias("avg_csat_score"),
-            spark_sum(when(col("sla_breach") == True, 1).otherwise(0)).alias("sla_breach_count"),
-            (spark_sum(when(col("sla_breach") == True, 1).otherwise(0)) / count("ticket_id") * 100).alias("sla_breach_rate"),
+            count("ticket_id").alias("total_tickets"),
             avg("resolution_hours").alias("avg_resolution_hours"),
-            spark_sum(when(col("severity") == "critical", 1).otherwise(0)).alias("critical_tickets_count")
+            spark_sum(when(col("sla_breach") == True, 1).otherwise(0)).alias("sla_breach_count"),
+            (spark_sum(when(col("sla_breach") == True, 1).otherwise(0)) / count("ticket_id")).alias("sla_breach_rate"),
+            avg("csat_score").alias("csat_avg"),
+            spark_sum(when(col("category") == "billing", 1).otherwise(0)).alias("billing_tickets"),
+            spark_sum(when(col("category") == "technical", 1).otherwise(0)).alias("technical_tickets"),
+            spark_sum(when(col("category") == "access", 1).otherwise(0)).alias("access_tickets"),
+            spark_sum(when(col("category").isin("billing", "technical", "access") == False, 1).otherwise(0)).alias("other_tickets")
         )
         
         return mart_df
