@@ -3,7 +3,7 @@ Spark session management and utilities
 """
 
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType, BooleanType, LongType
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType, BooleanType, LongType, DateType
 import logging
 import os
 
@@ -107,8 +107,8 @@ def get_common_schemas():
             StructField("ticket_id", StringType(), False),
             StructField("org_id", StringType(), True),
             StructField("user_id", StringType(), True),
-            StructField("created_at", TimestampType(), True),
-            StructField("resolved_at", TimestampType(), True),
+            StructField("created_at", DateType(), True),
+            StructField("resolved_at", DateType(), True),
             StructField("priority", StringType(), True),
             StructField("status", StringType(), True),
             StructField("csat_score", IntegerType(), True),
