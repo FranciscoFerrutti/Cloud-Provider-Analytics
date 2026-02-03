@@ -154,7 +154,7 @@ class GoldMarts:
             "resolution_hours",
             when(
                 col("resolved_at").isNotNull(),
-                (col("resolved_at").cast("long") - col("created_at").cast("long")) / 3600.0
+                (col("resolved_at").cast("timestamp").cast("long") - col("created_at").cast("timestamp").cast("long")) / 3600.0
             ).otherwise(None)
         )
         
