@@ -58,12 +58,18 @@ class Pipeline:
         logger.info("=" * 50)
         
         # Start streaming ingestion
-        query = self.streaming_ingestion.start_streaming_to_bronze()
+        ingestion_query = self.streaming_ingestion.start_streaming_to_bronze()
+        
+        # Start streaming transformations (Bronze -> Silver)
+        silver_query = self.streaming_ingestion.start_streaming_silver()
+        
+        # Start streaming aggregations (Silver -> Gold + AstraDB)
+        gold_query = self.streaming_ingestion.start_streaming_gold()
         
         logger.info("Speed Layer Processing Started")
-        logger.info("Streaming query is running. Use query.awaitTermination() to wait.")
+        logger.info("Streaming queries (Ingestion, Silver, Gold) are running. Use spark.streams.awaitAnyTermination() to wait.")
         
-        return query
+        return [ingestion_query, silver_query, gold_query]
     
     def run_silver_layer(self):
         """Run Silver layer transformations"""

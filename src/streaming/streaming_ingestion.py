@@ -12,7 +12,10 @@ import logging
 
 from src.utils.config import Config
 from src.utils.spark_utils import get_common_schemas
+from src.utils.spark_utils import get_common_schemas
 from src.quality.validators import DataQualityValidator
+from src.serving.loader import CassandraLoader
+from src.silver.transformations import SilverTransformations
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,8 @@ class StreamingIngestion:
         self.validator = DataQualityValidator(Config.QUARANTINE_PATH)
         self.schemas = get_common_schemas()
         self.streaming_config = Config.STREAMING_CONFIG
+        self.cassandra_loader = CassandraLoader(self.spark)
+        self.silver_transformer = SilverTransformations(self.spark)
     
     def create_streaming_source(self, source_path: str) -> DataFrame:
         """
@@ -211,21 +216,87 @@ class StreamingIngestion:
         logger.info(f"Streaming query started. Checkpoint: {checkpoint_path}")
         return query
     
-    def start_streaming_aggregations(self) -> StreamingQuery:
+    def start_streaming_silver(self) -> StreamingQuery:
         """
-        Start streaming aggregations for near real-time metrics
+        Start streaming transformation from Bronze to Silver
         
         Returns:
             StreamingQuery instance
         """
-        logger.info("Starting streaming aggregations")
+        logger.info("Starting streaming Silver transformations")
         
-        # Read from Bronze streaming
+        # Read from Bronze (streaming)
         bronze_path = Config.get_bronze_path("usage_events")
         
+        # Create stream from Bronze files
         stream_df = self.spark.readStream \
             .schema(self.schemas.get("usage_event")) \
             .parquet(bronze_path)
+            
+        # Apply Silver Transformations (Reuse SilverTransformations logic where stream-safe)
+        
+        # 1. Normalizations
+        df = self.silver_transformer.normalize_dates(stream_df)
+        df = self.silver_transformer.normalize_regions(df)
+        df = self.silver_transformer.normalize_services(df)
+        
+        # 2. Handle Nulls (Safe)
+        df = self.silver_transformer.handle_nulls(df)
+        
+        # 3. Handle Outliers
+        
+        # 4. Enrichments (Safe - broadcast joins)
+        df = self.silver_transformer.enrich_with_master_data(df)
+        
+        # Write to Silver Parquet (Stream)
+        silver_path = Config.get_silver_path("usage_events_streaming")
+        checkpoint_path = f"{Config.STREAMING_CHECKPOINT}/silver_usage_events_processing"
+        
+        query = df.writeStream \
+            .outputMode("append") \
+            .format("parquet") \
+            .option("path", silver_path) \
+            .option("checkpointLocation", checkpoint_path) \
+            .partitionBy("year", "month", "day") \
+            .trigger(processingTime="10 seconds") \
+            .start()
+            
+        logger.info(f"Silver streaming query started. Checkpoint: {checkpoint_path}")
+        return query
+
+    def start_streaming_gold(self) -> StreamingQuery:
+        """
+        Start streaming aggregations from Silver to Gold and AstraDB
+        
+        Returns:
+            StreamingQuery instance
+        """
+        logger.info("Starting streaming Gold aggregations")
+        
+        # Read from Silver streaming
+        silver_path = Config.get_silver_path("usage_events_streaming")
+        
+        # Define minimal schema for aggregation to avoid UNABLE_TO_INFER_SCHEMA on empty dir
+        # We only need columns used in aggregation
+        from pyspark.sql.types import StructType, StructField, StringType, TimestampType, DoubleType, LongType
+        
+        silver_schema = StructType([
+            StructField("event_ts", TimestampType(), True),
+            StructField("org_id", StringType(), True),
+            StructField("service", StringType(), True),
+            StructField("region", StringType(), True),
+            StructField("cost_usd_increment", DoubleType(), True),
+            StructField("event_id", StringType(), True),
+            StructField("unit", StringType(), True),
+            StructField("value", DoubleType(), True),
+            StructField("genai_tokens", LongType(), True),
+            StructField("carbon_kg", DoubleType(), True)
+        ])
+        
+        stream_df = self.spark.readStream \
+            .schema(silver_schema) \
+            .option("basePath", silver_path) \
+            .parquet(silver_path)
         
         # Add watermark for late data handling
         stream_df = stream_df.withWatermark("event_ts", self.streaming_config["watermark_delay"])
@@ -256,18 +327,42 @@ class StreamingIngestion:
             spark_sum(coalesce(col("carbon_kg"), lit(0))).alias("window_carbon_kg")
         )
         
-        # Write to Silver streaming table
-        silver_path = Config.get_silver_path("usage_events_streaming")
-        checkpoint_path = f"{Config.STREAMING_CHECKPOINT}/silver_usage_events"
+        # Write to Gold streaming table AND AstraDB using foreachBatch
+        gold_path = Config.get_gold_path("usage_events_streaming_agg")
+        checkpoint_path = f"{Config.STREAMING_CHECKPOINT}/gold_usage_events_agg"
         
+        def process_batch(batch_df: DataFrame, batch_id: int):
+            # 1. Archive to Gold (Parquet)
+            batch_df.write \
+                .mode("append") \
+                .parquet(gold_path)
+            
+            # 2. Write to AstraDB (Serving)
+            # Flatten window struct to separate columns
+            astra_df = batch_df.select(
+                col("window.start").alias("window_start"),
+                col("window.end").alias("window_end"),
+                col("org_id"),
+                col("service"),
+                col("region"),
+                col("window_cost_usd").alias("cost_usd"),
+                col("window_requests").alias("requests"),
+                col("window_cpu_hours").alias("cpu_hours"),
+                col("window_storage_gb_hours").alias("storage_gb_hours"),
+                col("window_genai_tokens").alias("genai_tokens"),
+                col("window_carbon_kg").alias("carbon_kg")
+            )
+            
+            self.cassandra_loader.write_batch_to_astra(astra_df, "org_usage_realtime")
+        
+        # Use update output mode for the query to get updates on windows
         query = aggregated_df.writeStream \
             .outputMode("update") \
-            .format("parquet") \
-            .option("path", silver_path) \
+            .foreachBatch(process_batch) \
             .option("checkpointLocation", checkpoint_path) \
             .trigger(processingTime=self.streaming_config["trigger_interval"]) \
             .start()
-        
-        logger.info(f"Streaming aggregations started. Checkpoint: {checkpoint_path}")
+            
+        logger.info(f"Gold streaming query started. Checkpoint: {checkpoint_path}")
         return query
 

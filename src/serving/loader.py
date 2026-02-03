@@ -140,3 +140,24 @@ class CassandraLoader:
             except Exception as e:
                 logger.error(f"Failed to load {mart_name}: {e}")
                 continue
+    
+    def write_batch_to_astra(self, df: DataFrame, collection_name: str):
+        """
+        Write a batch DataFrame to AstraDB (for Streaming)
+        
+        Args:
+            df: Batch DataFrame
+            collection_name: Target collection name
+        """
+        config_broadcast = self.cassandra_config
+        
+        try:
+            df.foreachPartition(
+                lambda partition: write_partition_to_astra(partition, collection_name, config_broadcast)
+            )
+            # logger.info(f"Written batch to Astra/{collection_name}") # Too noisy for streaming
+        except Exception as e:
+            logger.error(f"Error writing batch to Astra/{collection_name}: {e}")
+            # Don't raise, let stream continue? Or raise to fail query?
+            # Better to log and continue or depend on checkpoint to retry
+            raise

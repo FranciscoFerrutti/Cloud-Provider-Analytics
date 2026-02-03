@@ -74,17 +74,17 @@ def main():
         
         elif args.streaming:
             # Start streaming
-            query = pipeline.run_speed_layer()
+            # Start streaming
+            queries = pipeline.run_speed_layer()
             print("\n" + "="*60)
-            print("Streaming query started successfully!")
-            print(f"Query ID: {query.id}")
-            print(f"Status: {query.status}")
-            print("\nTo stop the query, use: query.stop()")
-            print("To wait for termination, use: query.awaitTermination()")
+            print("Streaming queries started successfully!")
+            print(f"Active streams: {len(spark.streams.active)}")
+            print("\nTo stop the query, press Ctrl+C")
+            print("Waiting for any query to terminate...")
             print("="*60 + "\n")
             
             # Wait for termination
-            query.awaitTermination()
+            spark.streams.awaitAnyTermination()
         
         elif args.layer == "batch":
             pipeline.run_batch_layer()
