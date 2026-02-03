@@ -84,7 +84,11 @@ def main():
             print("="*60 + "\n")
             
             # Wait for termination
-            spark.streams.awaitAnyTermination()
+            try:
+                spark.streams.awaitAnyTermination()
+            except KeyboardInterrupt:
+                print("\nStreaming stopped by user (Ctrl+C). Exiting...")
+                logger.info("Streaming stopped by user.")
         
         elif args.layer == "batch":
             pipeline.run_batch_layer()
