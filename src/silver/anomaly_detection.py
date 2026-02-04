@@ -41,6 +41,11 @@ class AnomalyDetector:
         """
         logger.info(f"Detecting anomalies using z-score for {value_col}")
         
+        # Check for empty dataframe
+        if df.isEmpty():
+            logger.warning(f"No data for z-score detection in {value_col}. Returning original DF.")
+            return df.withColumn("z_score", lit(0.0)).withColumn("is_anomaly_zscore", lit(False))
+
         # Calculate mean and stddev
         stats = df.select(
             mean(col(value_col)).alias("mean_val"),
@@ -77,6 +82,11 @@ class AnomalyDetector:
         """
         logger.info(f"Detecting anomalies using MAD for {value_col}")
         
+        # Check for empty dataframe
+        if df.isEmpty():
+            logger.warning(f"No data for MAD detection in {value_col}. Returning original DF.")
+            return df.withColumn("mad_score", lit(0.0)).withColumn("is_anomaly_mad", lit(False))
+
         # Calculate median
         median = df.approxQuantile(value_col, [0.5], 0.25)[0]
         
@@ -116,6 +126,11 @@ class AnomalyDetector:
         """
         logger.info(f"Detecting anomalies using percentiles for {value_col}")
         
+        # Check for empty dataframe
+        if df.isEmpty():
+            logger.warning(f"No data for percentile detection in {value_col}. Returning original DF.")
+            return df.withColumn("is_anomaly_percentile", lit(False)).withColumn("percentile_threshold", lit(0.0))
+
         # Calculate percentiles
         percentiles = df.approxQuantile(
             value_col,

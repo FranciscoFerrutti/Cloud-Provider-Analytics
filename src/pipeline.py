@@ -5,7 +5,7 @@ Main pipeline orchestration
 from pyspark.sql import SparkSession
 import logging
 
-from src.utils.spark_utils import create_spark_session
+from src.utils.spark_utils import create_spark_session, get_common_schemas
 from src.utils.logger import setup_logging
 from src.utils.config import Config
 from src.ingestion.batch_ingestion import BatchIngestion
@@ -82,7 +82,9 @@ class Pipeline:
         self.silver_transforms.transform_billing_data()
 
         # Read from Bronze
-        bronze_df = self.spark.read.parquet(Config.get_bronze_path("usage_events"))
+        # Use schema to avoid AnalysisException if directory is empty (e.g. initial run)
+        usage_schema = get_common_schemas().get("usage_event")
+        bronze_df = self.spark.read.schema(usage_schema).parquet(Config.get_bronze_path("usage_events"))
         
         # Transform
         silver_df = self.silver_transforms.transform_usage_events(bronze_df)

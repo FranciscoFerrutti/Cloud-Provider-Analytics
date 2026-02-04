@@ -7,6 +7,10 @@ from pyspark.sql.functions import (
     col, sum as spark_sum, count, avg, max as spark_max, min as spark_min,
     date_format, to_date, year, month, dayofmonth, when, coalesce, lit, concat
 )
+from pyspark.sql.types import (
+    StructType, StructField, StringType, DoubleType,
+    IntegerType, DateType, BooleanType, TimestampType, LongType
+)
 import logging
 
 from src.utils.config import Config
@@ -25,6 +29,37 @@ class GoldMarts:
             spark: SparkSession instance
         """
         self.spark = spark
+        
+    def _get_silver_usage_schema(self) -> StructType:
+        """Return the schema for Silver usage_events to verify empty reads"""
+        return StructType([
+            StructField("event_id", StringType(), True),
+            StructField("event_ts", TimestampType(), True),
+            StructField("org_id", StringType(), True),
+            StructField("service", StringType(), True),
+            StructField("region", StringType(), True),
+            StructField("cost_usd", DoubleType(), True),
+            StructField("requests", LongType(), True),
+            StructField("cpu_hours", DoubleType(), True),
+            StructField("storage_gb_hours", DoubleType(), True),
+            StructField("genai_tokens", LongType(), True),  # Changed to LongType for tokens
+            StructField("carbon_kg", DoubleType(), True),
+            StructField("ingest_ts", TimestampType(), True),
+            StructField("source_file", StringType(), True),
+            StructField("daily_cost_usd", DoubleType(), True),
+            StructField("date", DateType(), True),
+            StructField("is_anomaly", BooleanType(), True),
+            StructField("year", IntegerType(), True),
+            StructField("month", IntegerType(), True),
+            StructField("day", IntegerType(), True),
+            # Anomaly details
+            StructField("is_anomaly_zscore", BooleanType(), True),
+            StructField("is_anomaly_mad", BooleanType(), True),
+            StructField("is_anomaly_percentile", BooleanType(), True),
+            StructField("z_score", DoubleType(), True),
+            StructField("mad_score", DoubleType(), True),
+            StructField("percentile_threshold", DoubleType(), True)
+        ])
     
     def create_org_daily_usage_by_service(self) -> DataFrame:
         """
@@ -35,9 +70,7 @@ class GoldMarts:
         """
         logger.info("Creating org_daily_usage_by_service mart")
         
-
-        
-        silver_df = self.spark.read.parquet(Config.get_silver_path("usage_events"))
+        silver_df = self.spark.read.schema(self._get_silver_usage_schema()).parquet(Config.get_silver_path("usage_events"))
         
         mart_df = silver_df.groupBy(
             "org_id",
@@ -66,7 +99,7 @@ class GoldMarts:
         
         billing_df = self.spark.read.parquet(Config.get_silver_path("billing_processed"))
         
-        usage_df = self.spark.read.parquet(Config.get_silver_path("usage_events"))
+        usage_df = self.spark.read.schema(self._get_silver_usage_schema()).parquet(Config.get_silver_path("usage_events"))
         
         usage_stats = usage_df.groupBy("org_id", "year", "month").agg(
             spark_sum("requests").alias("monthly_requests"),
@@ -102,7 +135,7 @@ class GoldMarts:
         """
         logger.info("Creating cost_anomaly_mart")
         
-        silver_df = self.spark.read.parquet(Config.get_silver_path("usage_events"))
+        silver_df = self.spark.read.schema(self._get_silver_usage_schema()).parquet(Config.get_silver_path("usage_events"))
         
         anomaly_df = silver_df.filter(
             col("is_anomaly") == True
@@ -174,7 +207,7 @@ class GoldMarts:
         """
         logger.info("Creating genai_tokens_by_org_date mart")
         
-        silver_df = self.spark.read.parquet(Config.get_silver_path("usage_events"))
+        silver_df = self.spark.read.schema(self._get_silver_usage_schema()).parquet(Config.get_silver_path("usage_events"))
         
         genai_df = silver_df.filter(
             (col("service").contains("GENAI")) |

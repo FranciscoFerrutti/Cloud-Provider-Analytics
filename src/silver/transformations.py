@@ -150,10 +150,15 @@ class SilverTransformations:
             spark_min(col(cost_col)).alias("min_cost")
         ).collect()[0]
         
+        max_cost = cost_stats["max_cost"]
+        
+        if max_cost is None:
+            logger.warning(f"No data to detect outliers in {cost_col}. Returning original DF.")
+            return df.withColumn("is_outlier", lit(False))
 
         df = df.withColumn(
             "is_outlier",
-            (col(cost_col) < 0) | (col(cost_col) > cost_stats["max_cost"] * 0.1)
+            (col(cost_col) < 0) | (col(cost_col) > max_cost * 0.1)
         )
         
 
@@ -161,7 +166,7 @@ class SilverTransformations:
             cost_col,
             when(col("is_outlier"), 
                  when(col(cost_col) < 0, lit(0.0))
-                 .otherwise(cost_stats["max_cost"] * 0.1))
+                 .otherwise(max_cost * 0.1))
             .otherwise(col(cost_col))
         )
         
