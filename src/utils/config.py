@@ -40,7 +40,8 @@ class Config:
         "max_files_per_trigger": 10,
         "watermark_delay": "10 minutes",
         "window_duration": "1 hour",
-        "window_slide": "30 minutes"
+        "window_slide": "30 minutes",
+        "batch_timeout_seconds": 60
     }
     
     # Data quality thresholds

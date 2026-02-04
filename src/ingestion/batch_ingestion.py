@@ -9,6 +9,8 @@ import logging
 from src.utils.config import Config
 from src.utils.spark_utils import get_common_schemas
 from src.quality.validators import DataQualityValidator
+from src.streaming.streaming_ingestion import StreamingIngestion
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -251,13 +253,28 @@ class BatchIngestion:
             schemas.get("billing_monthly")
         )
         
-        # 2. Ingest Historical Usage Events (JSONL)
-        self.ingest_json_to_bronze(
-            "usage_events_stream",
-            Config.LANDING_SOURCES["usage_events_stream"],
-            "usage_events",
-            schemas.get("usage_event")
-        )
+        # 2. Ingest Historical Usage Events (JSONL) using Unified Streaming Logic
+        logger.info("Ingesting usage events using StreamingIngestion in Batch Mode")
+        streaming_ingestion = StreamingIngestion(self.spark)
+        
+        # Use a fast processing time for batch execution
+        batch_trigger = {"processingTime": "5 seconds"}
+        queries = streaming_ingestion.start_streaming_to_bronze(trigger=batch_trigger)
+        
+        timeout = Config.STREAMING_CONFIG.get("batch_timeout_seconds", 60)
+        logger.info(f"Waiting for batch streaming ingestion for {timeout} seconds...")
+        
+        # Wait for timeout on the valid data query (the last one)
+        if queries:
+            valid_query = queries[-1]
+            valid_query.awaitTermination(timeout)
+        
+        logger.info("Batch streaming timeout reached. Stopping queries...")
+        for q in queries:
+            if q.isActive:
+                q.stop()
+                
+        logger.info("Batch streaming ingestion stopped.")
         
         logger.info("Batch ingestion from Landing to Bronze completed")
 

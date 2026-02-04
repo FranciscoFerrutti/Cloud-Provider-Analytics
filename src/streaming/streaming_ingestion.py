@@ -155,18 +155,22 @@ class StreamingIngestion:
         
         return valid_df, invalid_df
     
-    def start_streaming_to_bronze(self, source_path: str = None) -> StreamingQuery:
+    def start_streaming_to_bronze(self, source_path: str = None, trigger: dict = None) -> list[StreamingQuery]:
         """
         Start streaming query to write to Bronze layer
         
         Args:
             source_path: Path to streaming source (defaults to config)
+            trigger: Trigger configuration (defaults to processingTime from config)
             
         Returns:
-            StreamingQuery instance
+            List of StreamingQuery instances (for invalid and valid streams)
         """
         if source_path is None:
             source_path = Config.LANDING_SOURCES["usage_events_stream"]
+            
+        if trigger is None:
+            trigger = {"processingTime": self.streaming_config["trigger_interval"]}
         
         logger.info(f"Starting streaming ingestion from {source_path}")
         
@@ -199,7 +203,7 @@ class StreamingIngestion:
             .option("path", quarantine_path) \
             .option("checkpointLocation", quarantine_checkpoint) \
             .partitionBy("year", "month", "day") \
-            .trigger(processingTime=self.streaming_config["trigger_interval"]) \
+            .trigger(**trigger) \
             .start()
             
         logger.info(f"Quarantine streaming query started. Checkpoint: {quarantine_checkpoint}")
@@ -210,11 +214,11 @@ class StreamingIngestion:
             .option("path", bronze_path) \
             .option("checkpointLocation", checkpoint_path) \
             .partitionBy("year", "month", "day") \
-            .trigger(processingTime=self.streaming_config["trigger_interval"]) \
+            .trigger(**trigger) \
             .start()
         
         logger.info(f"Streaming query started. Checkpoint: {checkpoint_path}")
-        return query
+        return [invalid_query, query]
     
     def start_streaming_silver(self) -> StreamingQuery:
         """
