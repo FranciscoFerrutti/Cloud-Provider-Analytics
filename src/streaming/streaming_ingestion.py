@@ -336,24 +336,6 @@ class StreamingIngestion:
             batch_df.write \
                 .mode("append") \
                 .parquet(gold_path)
-            
-            # 2. Write to AstraDB (Serving)
-            # Flatten window struct to separate columns
-            astra_df = batch_df.select(
-                col("window.start").alias("window_start"),
-                col("window.end").alias("window_end"),
-                col("org_id"),
-                col("service"),
-                col("region"),
-                col("window_cost_usd").alias("cost_usd"),
-                col("window_requests").alias("requests"),
-                col("window_cpu_hours").alias("cpu_hours"),
-                col("window_storage_gb_hours").alias("storage_gb_hours"),
-                col("window_genai_tokens").alias("genai_tokens"),
-                col("window_carbon_kg").alias("carbon_kg")
-            )
-            
-            self.cassandra_loader.write_batch_to_astra(astra_df, "org_usage_realtime")
         
         # Use update output mode for the query to get updates on windows
         query = aggregated_df.writeStream \
