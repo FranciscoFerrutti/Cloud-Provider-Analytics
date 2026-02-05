@@ -288,9 +288,15 @@ class BatchIngestion:
             # We don't use streaming deduplication (watermarks) here, just unique event_id
             dedup_df = standard_df.dropDuplicates(["event_id"])
             
+            # Add partition columns derived from event_ts
+            dedup_df = dedup_df.withColumn("date", to_date(col("event_ts"))) \
+                               .withColumn("year", year(col("date"))) \
+                               .withColumn("month", month(col("date"))) \
+                               .withColumn("day", dayofmonth(col("date")))
+            
             # Write to Bronze (Partitioned)
             bronze_output = Config.get_bronze_path("usage_events")
-            logger.info(f"Writing records to Bronze: {bronze_output}")
+            logger.info(f"Writing {dedup_df.count()} records to Bronze: {bronze_output}")
             
             dedup_df.write \
                 .mode("overwrite") \
