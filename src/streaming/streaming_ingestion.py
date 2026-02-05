@@ -74,7 +74,8 @@ class StreamingIngestion:
         
         # Pivot metrics from 'metric' and 'value' columns
         # Note: Each row has only one metric, so others will be null (as expected by standard schema)
-        df = df.withColumn("requests", when(col("metric") == "requests", col("value").cast("long"))) \
+        # For requests, if value is null, we assume it represents a single event (count=1)
+        df = df.withColumn("requests", when(col("metric") == "requests", coalesce(col("value"), lit(1.0)).cast("long"))) \
                .withColumn("cpu_hours", when(col("metric") == "cpu_hours", col("value").cast("double"))) \
                .withColumn("storage_gb_hours", when(col("metric") == "storage_gb_hours", col("value").cast("double"))) \
                .withColumn("user_id", lit(None).cast("string"))

@@ -193,7 +193,7 @@ class SilverTransformations:
         
 
         df = df.join(
-            resources_df.select("resource_id", "resource_type").alias("resource_info"),
+            resources_df.select("resource_id", col("service").alias("resource_type")),
             on="resource_id",
             how="left"
         )
@@ -218,10 +218,10 @@ class SilverTransformations:
             "org_id", "service", "region"
         ).agg(
             spark_sum("cost_usd").alias("daily_cost_usd"),
-            spark_sum("requests").alias("requests"),
+            spark_sum("requests").cast("long").alias("requests"),
             spark_sum("cpu_hours").alias("cpu_hours"),
             spark_sum("storage_gb_hours").alias("storage_gb_hours"),
-            spark_sum(coalesce(col("genai_tokens"), lit(0))).alias("genai_tokens"),
+            spark_sum(coalesce(col("genai_tokens"), lit(0))).cast("long").alias("genai_tokens"),
             spark_sum(coalesce(col("carbon_kg"), lit(0))).alias("carbon_kg")
         )
         

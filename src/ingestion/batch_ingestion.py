@@ -271,33 +271,40 @@ class BatchIngestion:
         # 2. Ingest Historical Usage Events (JSONL) using Unified Streaming Logic
         logger.info("Ingesting usage events using StreamingIngestion in Batch Mode")
         streaming_ingestion = StreamingIngestion(self.spark)
+        # Force single batch processing to avoid state issues with aggressive cleanup
+        # This ensures all history is processed in Batch 0
+        streaming_ingestion.streaming_config["max_files_per_trigger"] = 10000
         
-        # Use a fast processing time for batch execution
-        batch_trigger = {"processingTime": "5 seconds"}
+        # Use availableNow trigger to process all available data and stop automatically
+        batch_trigger = {"availableNow": True}
         
         # Use a designated batch checkpoint to force re-processing of all files (ignoring stream history)
         batch_checkpoint = Config.get_checkpoint_path("usage_events_batch")
-        logger.info(f"Using batch checkpoint: {batch_checkpoint}")
+        # Define separate checkpoint directory for batch execution
+        checkpoint_dir = "/tmp/checkpoints/streaming/usage_events_batch"
         
+        # Ensure fresh start by cleaning checkpoint directory
+        import shutil
+        import os
+        if os.path.exists(checkpoint_dir):
+            logger.info(f"Cleaning checkpoint directory: {checkpoint_dir}")
+            shutil.rmtree(checkpoint_dir)
+
         queries = streaming_ingestion.start_streaming_to_bronze(
             trigger=batch_trigger,
             checkpoint_dir=batch_checkpoint
         )
         
-        timeout = Config.STREAMING_CONFIG.get("batch_timeout_seconds", 60)
-        logger.info(f"Waiting for batch streaming ingestion for {timeout} seconds...")
+        logger.info("Waiting for batch streaming ingestion to complete...")
         
-        # Wait for timeout on the valid data query (the last one)
-        if queries:
-            valid_query = queries[-1]
-            valid_query.awaitTermination(timeout)
-        
-        logger.info("Batch streaming timeout reached. Stopping queries...")
+        # Wait for all queries to finish gracefully
         for q in queries:
-            if q.isActive:
-                q.stop()
+            try:
+                q.awaitTermination()
+            except Exception as e:
+                logger.warning(f"Query terminated with error: {e}")
                 
-        logger.info("Batch streaming ingestion stopped.")
+        logger.info("Batch streaming ingestion completed.")
         
         logger.info("Batch ingestion from Landing to Bronze completed")
 
