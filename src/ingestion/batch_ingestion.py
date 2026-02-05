@@ -269,42 +269,37 @@ class BatchIngestion:
         )
         
         # 2. Ingest Historical Usage Events (JSONL) using Unified Streaming Logic
-        logger.info("Ingesting usage events using StreamingIngestion in Batch Mode")
+        # Ingest Historical Usage Events (JSONL) using Static Batch Read (Optimization for Colab)
+        logger.info("Ingesting usage events using Static Batch Read (No Streaming)")
         streaming_ingestion = StreamingIngestion(self.spark)
-        # Force single batch processing to avoid state issues with aggressive cleanup
-        # This ensures all history is processed in Batch 0
-        streaming_ingestion.streaming_config["max_files_per_trigger"] = 10000
         
-        # Use availableNow trigger to process all available data and stop automatically
-        batch_trigger = {"availableNow": True}
+        # Read JSONL directly using the landing schema (EAV)
+        landing_path = Config.LANDING_SOURCES["usage_events"]
+        landing_schema = get_common_schemas()["usage_event_landing"]
         
-        # Use a designated batch checkpoint to force re-processing of all files (ignoring stream history)
-        batch_checkpoint = Config.get_checkpoint_path("usage_events_batch")
-        # Define separate checkpoint directory for batch execution
-        checkpoint_dir = "/tmp/checkpoints/streaming/usage_events_batch"
+        logger.info(f"Reading JSONL from {landing_path}")
+        raw_df = self.spark.read.schema(landing_schema).json(landing_path)
         
-        # Ensure fresh start by cleaning checkpoint directory
-        import shutil
-        import os
-        if os.path.exists(checkpoint_dir):
-            logger.info(f"Cleaning checkpoint directory: {checkpoint_dir}")
-            shutil.rmtree(checkpoint_dir)
-
-        queries = streaming_ingestion.start_streaming_to_bronze(
-            trigger=batch_trigger,
-            checkpoint_dir=batch_checkpoint
-        )
-        
-        logger.info("Waiting for batch streaming ingestion to complete...")
-        
-        # Wait for all queries to finish gracefully
-        for q in queries:
-            try:
-                q.awaitTermination()
-            except Exception as e:
-                logger.warning(f"Query terminated with error: {e}")
-                
-        logger.info("Batch streaming ingestion completed.")
+        if not raw_df.isEmpty():
+            # Apply transformation (EAV pivot etc) reuse existing logic
+            standard_df = streaming_ingestion.transform_landing_to_standard(raw_df)
+            
+            # Deduplicate (Batch style - simple dropDuplicates)
+            # We don't use streaming deduplication (watermarks) here, just unique event_id
+            dedup_df = standard_df.dropDuplicates(["event_id"])
+            
+            # Write to Bronze (Partitioned)
+            bronze_output = Config.get_bronze_path("usage_events")
+            logger.info(f"Writing records to Bronze: {bronze_output}")
+            
+            dedup_df.write \
+                .mode("overwrite") \
+                .partitionBy("year", "month", "day") \
+                .parquet(bronze_output)
+            
+            logger.info("Static batch ingestion completed successfully")
+        else:
+             logger.warning("No data found in usage_events landing path")
         
         logger.info("Batch ingestion from Landing to Bronze completed")
 
