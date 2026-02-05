@@ -90,9 +90,17 @@ class SilverTransformations:
         """
         logger.info(f"Normalizing services")
         
+        # Sanitize service name to be safe for directory usage (partitioning)
+        # 1. Uppercase and trim
+        # 2. Replace non-alphanumeric chars (except - and _) with empty string to avoid "path too long" or invalid chars
+        # 3. Limit length to 50 chars to prevent path too long errors
         df = df.withColumn(
             service_col,
-            upper(trim(col(service_col)))
+            upper(trim(regexp_replace(col(service_col), r"[^a-zA-Z0-9-_]", "")))
+        )
+        df = df.withColumn(
+            service_col,
+            substring(col(service_col), 1, 50)
         )
         
         return df
@@ -410,8 +418,10 @@ class SilverTransformations:
         if partition_cols is None:
             partition_cols = ["year", "month", "day", "service"]
         
-        df.write \
+        # Optimize write: Sort to minimize open file buffers (key for partitioned writes)
+        df.coalesce(10).sortWithinPartitions(*partition_cols).write \
             .mode("overwrite") \
+            .option("partitionOverwriteMode", "dynamic") \
             .partitionBy(*partition_cols) \
             .option("mergeSchema", "true") \
             .parquet(silver_path)
