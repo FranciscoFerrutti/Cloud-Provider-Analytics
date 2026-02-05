@@ -2,6 +2,7 @@
 Structured Streaming ingestion for usage events (Speed Layer)
 """
 
+import os
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import (
     col, current_timestamp, input_file_name, to_date, year, month, dayofmonth,
@@ -49,17 +50,37 @@ class StreamingIngestion:
         """
         logger.info(f"Creating streaming source from {source_path}")
         
-        # Read streaming data with schema inference
-        schema = self.schemas.get("usage_event")
+        # Read streaming data with landing schema (EAV structure + timestamp)
+        # We use explicit schema to ensure all cols are read
+        schema = self.schemas.get("usage_event_landing")
         
         stream_df = self.spark.readStream \
             .schema(schema) \
+            .option("startingOffsets", "earliest") \
             .option("maxFilesPerTrigger", self.streaming_config["max_files_per_trigger"]) \
-            .option("latestFirst", "true") \
             .json(source_path)
         
         return stream_df
     
+    def transform_landing_to_standard(self, df: DataFrame) -> DataFrame:
+        """
+        Transform detailed/EAV landing data to standard schema (wide)
+        Renames timestamp -> event_ts
+        Pivots metric/value -> requests, cpu_hours, etc.
+        """
+        # Rename base columns
+        df = df.withColumnRenamed("timestamp", "event_ts") \
+               .withColumnRenamed("cost_usd_increment", "cost_usd")
+        
+        # Pivot metrics from 'metric' and 'value' columns
+        # Note: Each row has only one metric, so others will be null (as expected by standard schema)
+        df = df.withColumn("requests", when(col("metric") == "requests", col("value").cast("long"))) \
+               .withColumn("cpu_hours", when(col("metric") == "cpu_hours", col("value").cast("double"))) \
+               .withColumn("storage_gb_hours", when(col("metric") == "storage_gb_hours", col("value").cast("double"))) \
+               .withColumn("user_id", lit(None).cast("string"))
+        
+        return df
+
     def add_audit_fields(self, df: DataFrame) -> DataFrame:
         """
         Add audit fields to streaming data
@@ -111,9 +132,10 @@ class StreamingIngestion:
             first("service").alias("service"),
             first("region").alias("region"),
             first("event_ts").alias("event_ts"),
-            first("cost_usd_increment").alias("cost_usd_increment"),
-            first("unit").alias("unit"),
-            first("value").alias("value"),
+            first("cost_usd").alias("cost_usd"),
+            first("requests").alias("requests"),
+            first("cpu_hours").alias("cpu_hours"),
+            first("storage_gb_hours").alias("storage_gb_hours"),
             first("schema_version").alias("schema_version"),
             first("carbon_kg").alias("carbon_kg"),
             first("genai_tokens").alias("genai_tokens"),
@@ -143,7 +165,7 @@ class StreamingIngestion:
         validation_df = df.withColumn(
             "is_valid",
             (col("event_id").isNotNull()) &
-            (col("cost_usd_increment") >= -0.01) &
+            (col("cost_usd") >= -0.01) &
             ((col("value").isNull()) | (col("unit").isNotNull())) &
             (col("event_ts").isNotNull()) &
             (col("org_id").isNotNull())
@@ -155,13 +177,14 @@ class StreamingIngestion:
         
         return valid_df, invalid_df
     
-    def start_streaming_to_bronze(self, source_path: str = None, trigger: dict = None) -> list[StreamingQuery]:
+    def start_streaming_to_bronze(self, source_path: str = None, trigger: dict = None, checkpoint_dir: str = None) -> list[StreamingQuery]:
         """
         Start streaming query to write to Bronze layer
         
         Args:
             source_path: Path to streaming source (defaults to config)
             trigger: Trigger configuration (defaults to processingTime from config)
+            checkpoint_dir: Optional custom checkpoint directory (overrides config)
             
         Returns:
             List of StreamingQuery instances (for invalid and valid streams)
@@ -177,6 +200,9 @@ class StreamingIngestion:
         # Create streaming source
         stream_df = self.create_streaming_source(source_path)
         
+        # Transform landing to standard
+        stream_df = self.transform_landing_to_standard(stream_df)
+        
         # Add audit fields
         stream_df = self.add_audit_fields(stream_df)
         
@@ -186,15 +212,21 @@ class StreamingIngestion:
         # Deduplicate valid records
         valid_df = self.deduplicate_streaming(valid_df)
         
+        # Determine checkpoint paths
+        if checkpoint_dir:
+            checkpoint_path = checkpoint_dir
+            quarantine_checkpoint = os.path.join(checkpoint_dir, "quarantine")
+        else:
+            checkpoint_path = f"{Config.STREAMING_CHECKPOINT}/bronze_usage_events"
+            quarantine_checkpoint = f"{Config.STREAMING_CHECKPOINT}/quarantine_usage_events"
+        
         # Write valid data to Bronze
         bronze_path = Config.get_bronze_path("usage_events")
-        checkpoint_path = f"{Config.STREAMING_CHECKPOINT}/bronze_usage_events"
         
         # Write invalid data to Quarantine
         quarantine_path = Config.get_quarantine_path("bronze", "usage_events")
-        quarantine_checkpoint = f"{Config.STREAMING_CHECKPOINT}/quarantine_usage_events"
         
-        logger.info(f"Starting quarantine stream to {quarantine_path}")
+        logger.info(f"Starting quarantine stream to {quarantine_path} with checkpoint {quarantine_checkpoint}")
         
         # We need to write invalid_df to quarantine
         invalid_query = invalid_df.writeStream \

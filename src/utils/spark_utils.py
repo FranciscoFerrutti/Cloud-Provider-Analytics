@@ -62,6 +62,21 @@ def get_common_schemas():
         Dictionary of schema definitions
     """
     schemas = {
+        "usage_event_landing": StructType([
+            StructField("event_id", StringType(), True),
+            StructField("timestamp", TimestampType(), True),
+            StructField("org_id", StringType(), True),
+            StructField("resource_id", StringType(), True),
+            StructField("service", StringType(), True),
+            StructField("region", StringType(), True),
+            StructField("metric", StringType(), True),
+            StructField("value", DoubleType(), True),
+            StructField("unit", StringType(), True),
+            StructField("cost_usd_increment", DoubleType(), True),
+            StructField("schema_version", IntegerType(), True),
+            StructField("carbon_kg", DoubleType(), True),
+            StructField("genai_tokens", LongType(), True)
+        ]),
         "usage_event": StructType([
             StructField("event_id", StringType(), False),
             StructField("org_id", StringType(), True),
@@ -70,9 +85,10 @@ def get_common_schemas():
             StructField("service", StringType(), True),
             StructField("region", StringType(), True),
             StructField("event_ts", TimestampType(), True),
-            StructField("cost_usd_increment", DoubleType(), True),
-            StructField("unit", StringType(), True),
-            StructField("value", DoubleType(), True),
+            StructField("cost_usd", DoubleType(), True),
+            StructField("requests", LongType(), True),
+            StructField("cpu_hours", DoubleType(), True),
+            StructField("storage_gb_hours", DoubleType(), True),
             StructField("schema_version", IntegerType(), True),
             StructField("carbon_kg", DoubleType(), True),  # v2
             StructField("genai_tokens", LongType(), True)  # GenAI

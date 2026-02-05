@@ -68,7 +68,6 @@ class SchemaManager:
         # 3. Canonical Column Order / Type Casting
         # We enforce types for critical columns
         df = df.withColumn("event_ts", col("event_ts").cast(TimestampType())) \
-               .withColumn("cost_usd_increment", col("cost_usd_increment").cast(DoubleType())) \
-               .withColumn("value", col("value").cast(DoubleType()))
+               .withColumn("cost_usd", col("cost_usd").cast(DoubleType()))
                
         return df

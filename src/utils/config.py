@@ -85,6 +85,11 @@ class Config:
         return os.path.join(cls.GOLD_PATH, table_name)
     
     @classmethod
+    def get_checkpoint_path(cls, table_name: str) -> str:
+        """Get checkpoint path"""
+        return os.path.join(cls.STREAMING_CHECKPOINT, table_name)
+    
+    @classmethod
     def get_quarantine_path(cls, layer: str, table_name: str) -> str:
         """Get quarantine path for invalid records"""
         return os.path.join(cls.QUARANTINE_PATH, layer, table_name)

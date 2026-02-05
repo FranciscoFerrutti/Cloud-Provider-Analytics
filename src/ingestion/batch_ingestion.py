@@ -84,6 +84,21 @@ class BatchIngestion:
                    .withColumn("year", year(col("date"))) \
                    .withColumn("month", month(col("date"))) \
                    .withColumn("day", dayofmonth(col("date")))
+        elif "signup_date" in df.columns:
+            df = df.withColumn("date", to_date(col("signup_date"))) \
+                   .withColumn("year", year(col("date"))) \
+                   .withColumn("month", month(col("date"))) \
+                   .withColumn("day", dayofmonth(col("date")))
+        elif "survey_date" in df.columns:
+            df = df.withColumn("date", to_date(col("survey_date"))) \
+                   .withColumn("year", year(col("date"))) \
+                   .withColumn("month", month(col("date"))) \
+                   .withColumn("day", dayofmonth(col("date")))
+        elif "timestamp" in df.columns:
+            df = df.withColumn("date", to_date(col("timestamp"))) \
+                   .withColumn("year", year(col("date"))) \
+                   .withColumn("month", month(col("date"))) \
+                   .withColumn("day", dayofmonth(col("date")))
         else:
             # Default to current date if no timestamp column
             df = df.withColumn("date", to_date(current_timestamp())) \
@@ -207,21 +222,21 @@ class BatchIngestion:
             "customers_orgs",
             Config.LANDING_SOURCES["customers_orgs"],
             "customers_orgs",
-            schemas.get("customer_org")
+            None
         )
         
         self.ingest_csv_to_bronze(
             "users",
             Config.LANDING_SOURCES["users"],
             "users",
-            schemas.get("user")
+            None
         )
         
         self.ingest_csv_to_bronze(
             "resources",
             Config.LANDING_SOURCES["resources"],
             "resources",
-            schemas.get("resource")
+            None
         )
         
         self.ingest_csv_to_bronze(
@@ -236,14 +251,14 @@ class BatchIngestion:
             "marketing_touches",
             Config.LANDING_SOURCES["marketing_touches"],
             "marketing_touches",
-            schemas.get("marketing_touch")
+            None
         )
         
         self.ingest_csv_to_bronze(
             "nps_surveys",
             Config.LANDING_SOURCES["nps_surveys"],
             "nps_surveys",
-            schemas.get("nps_survey")
+            None
         )
         
         self.ingest_csv_to_bronze(
@@ -259,7 +274,15 @@ class BatchIngestion:
         
         # Use a fast processing time for batch execution
         batch_trigger = {"processingTime": "5 seconds"}
-        queries = streaming_ingestion.start_streaming_to_bronze(trigger=batch_trigger)
+        
+        # Use a designated batch checkpoint to force re-processing of all files (ignoring stream history)
+        batch_checkpoint = Config.get_checkpoint_path("usage_events_batch")
+        logger.info(f"Using batch checkpoint: {batch_checkpoint}")
+        
+        queries = streaming_ingestion.start_streaming_to_bronze(
+            trigger=batch_trigger,
+            checkpoint_dir=batch_checkpoint
+        )
         
         timeout = Config.STREAMING_CONFIG.get("batch_timeout_seconds", 60)
         logger.info(f"Waiting for batch streaming ingestion for {timeout} seconds...")

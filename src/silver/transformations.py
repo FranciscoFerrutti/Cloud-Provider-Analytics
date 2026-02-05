@@ -99,29 +99,17 @@ class SilverTransformations:
     
     def handle_nulls(self, df: DataFrame) -> DataFrame:
         """
-        Handle null values with imputation strategies
+        Handle null values in critical columns
         
         Args:
             df: Input DataFrame
             
         Returns:
-            DataFrame with handled nulls
+            DataFrame with defaults for nulls
         """
         logger.info("Handling null values")
-        
 
-        df = df.withColumn(
-            "unit",
-            when(col("unit").isNull() & col("service").isNotNull(), 
-                 when(col("service").contains("COMPUTE"), "cpu_hours")
-                 .when(col("service").contains("STORAGE"), "gb_hours")
-                 .when(col("service").contains("NETWORK"), "gb_transferred")
-                 .otherwise("requests"))
-            .otherwise(col("unit"))
-        )
-        
-
-        numeric_cols = ["cost_usd_increment", "value", "carbon_kg", "genai_tokens"]
+        numeric_cols = ["cost_usd", "requests", "cpu_hours", "storage_gb_hours", "carbon_kg", "genai_tokens"]
         for col_name in numeric_cols:
             if col_name in df.columns:
                 df = df.withColumn(
@@ -131,7 +119,7 @@ class SilverTransformations:
         
         return df
     
-    def handle_outliers(self, df: DataFrame, cost_col: str = "cost_usd_increment") -> DataFrame:
+    def handle_outliers(self, df: DataFrame, cost_col: str = "cost_usd") -> DataFrame:
         """
         Handle outliers in cost data
         
@@ -191,7 +179,7 @@ class SilverTransformations:
         
 
         df = df.join(
-            orgs_df.select("org_id", "org_name", "industry", "tier"),
+            orgs_df.select("org_id", "org_name", "industry", col("plan_tier").alias("tier")),
             on="org_id",
             how="left"
         )
@@ -229,16 +217,10 @@ class SilverTransformations:
             "date", "year", "month", "day",
             "org_id", "service", "region"
         ).agg(
-            spark_sum("cost_usd_increment").alias("daily_cost_usd"),
-            count("event_id").alias("requests"),
-            spark_sum(
-                when(col("unit") == "cpu_hours", col("value"))
-                .otherwise(lit(0))
-            ).alias("cpu_hours"),
-            spark_sum(
-                when(col("unit") == "gb_hours", col("value"))
-                .otherwise(lit(0))
-            ).alias("storage_gb_hours"),
+            spark_sum("cost_usd").alias("daily_cost_usd"),
+            spark_sum("requests").alias("requests"),
+            spark_sum("cpu_hours").alias("cpu_hours"),
+            spark_sum("storage_gb_hours").alias("storage_gb_hours"),
             spark_sum(coalesce(col("genai_tokens"), lit(0))).alias("genai_tokens"),
             spark_sum(coalesce(col("carbon_kg"), lit(0))).alias("carbon_kg")
         )
