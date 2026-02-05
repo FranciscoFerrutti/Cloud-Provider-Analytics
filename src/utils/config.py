@@ -31,7 +31,8 @@ class Config:
         "marketing_touches": os.path.join(LANDING_PATH, "marketing_touches.csv"),
         "nps_surveys": os.path.join(LANDING_PATH, "nps_surveys.csv"),
         "billing_monthly": os.path.join(LANDING_PATH, "billing_monthly.csv"),
-        "usage_events_stream": os.path.join(LANDING_PATH, "usage_events_stream")
+        "usage_events_stream": os.path.join(LANDING_PATH, "usage_events_stream"),
+        "usage_events": os.path.join(LANDING_PATH, "usage_events_stream")
     }
     
     # Streaming configuration
